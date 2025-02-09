@@ -1,108 +1,163 @@
-/*print last 10 lines from given file
- *
- *
- *
- *
- *
- *
- *
+/**
+ * faulta:      FIT VUT
+ * priklad:     1)
+ * datum:       8. 4. 2023
+ * prekladac:   gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0
 */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 
-#define log printf
-#define MAX_LINE_LENGTH 4095 //max line length in bytes
+/**
+ * @public
+ * @brief Velikost cisla n pri ktere hrozi ukonceni programu jadrem operacniho systemu (Dle testovani na mem stroji, muze se lisit. Proto je tato skutecnost oznamena jen varovanim).
+*/
+#define MAX_LINES_CNT 1000000
 
+/**
+ * @public
+ * @brief Maximalni delka radku v souboru.
+*/
+#define MAX_LINE_LENGTH 4095
+
+/**
+ * @public
+ * @brief Struktura slouzici pro ulozeni poslednich n nactenych radku.
+*/
 struct circ_buff {
-	unsigned start; //idx of first inserted
-	unsigned end; //idx of last inserted
-	unsigned long long length;
-	char **buffer; //pole radku o delce max lngth
+	unsigned start;///< Index nejstarsiho vlozeneho prvku.
+	unsigned end; ///< (index nejnovejsiho vlozeneho prvku + 1) % velikost bufferu
+	unsigned long long length; ///< Delka bufferu.
+	char **buffer; ///< Pole "length" radku o maximalnidelce MAX_LINE_LENGTH.
 };
 
-struct circ_buff *cb_create(unsigned long long length) {
-	//log("entering cb_create, length is %llu", length);
+/**
+ * @public
+ * @name Funkce pro praci s kruhovym bufferem
+ * @{
+*/
 
-	//creates circular buffer structure, nulls end and start pointers and dynamically allocs field for lines
+/**
+ * @public
+ * @brief Vytvori kruhovy buffer, alokuje pamet pro strukturu i radky uvnitr bufferu. Vraci ukazatel na vytvoreny buffer nebo NULL v pripade selhani.
+ * @param [in] length Pocet radku v bufferu.
+*/
+struct circ_buff *cb_create(unsigned long length) {
+
+	//alokace pameti pro strukturu circ_buff a inicializace start a end fci calloc()
 	struct circ_buff *cb = calloc(1, sizeof(struct circ_buff));
 	if (cb == NULL) {
 		return NULL;
 	}
 
-	cb->end = 0;
-	cb->start = 0;
+	//alokace pameti pro pole ukazatelu na prvni pismena radku ulozenych v bufferu
 	cb->length = length;
 	cb->buffer = calloc(length, sizeof(char*));
 	if (cb->buffer == NULL) {
 		return NULL;
 	}
-	for (unsigned long long i = 0; i < length; i++) {
+	//alokace pameti pro radky v bufferu
+	for (unsigned long i = 0; i < length; i++) {
 		cb->buffer[i] = calloc(1 ,MAX_LINE_LENGTH);
 		if (cb->buffer[i] == NULL) {
 			return NULL;
 		}
 	}
-
 	return cb;
 }
 
+
+/**
+ * @public
+ * @brief Vlozi string na index end (za naposledy vlozny prvek) v bufferu. Pokud je naplnena velikost bufferu, prepisuje nejstarsi polozku. Posune ukazatel na misto za naposledy vlozeny prvek.
+ * @param [in] *cb Kruhovy buffer.
+ * @param [in] *line Radek k vlozeni.
+*/
 void cb_put(struct circ_buff *cb, char *line) {
-	//put on last position in cb
 	memcpy(cb->buffer[cb->end], line, strlen(line) + 1);
 	cb->end++;
 	cb->end %= cb->length;
 	cb->start = cb->end;
 }
 
+
+/**
+ * @public
+ * @brief Vrati nejstarsi string v bufferu, posune index nejstarsiho prvku.
+ * @param [in] *cb Ukazatel na kruhovy buffer.
+ * @return Ukazatel na prvni znak nejstarsiho radku.
+*/
 char *cb_get(struct circ_buff *cb) {
-	//get last stored element from buffer (FIFO) and return it
 	char *item = cb->buffer[cb->start];
 	cb->start++;
 	cb->start %= cb->length;
 	return item;
 }
 
+/**
+ * @public
+ * @brief Uvolni vsechny dynamicky alokovane zdroje pro kruhovy buffer (Tj. vsechny stringy ktere jsou v nem ulozeny a strukturu).
+ * @param [in] *cb Ukazatel na kruhovy buffer.
+*/
 void cb_free(struct circ_buff *cb) {
 	//free buffer
-	for (unsigned long long i = 0; i < cb->length; i++) {
+	for (unsigned long i = 0; i < cb->length; i++) {
 		free(cb->buffer[i]);
 	}
 	free(cb->buffer);
 	free(cb);
 }
 
-//reads from file lines_cnt lines and stores to circular buffer cb, returns pointer to created cb
-//caller MUST free dynamically allocated buffer by calling cb_free()
-//function assumes that file is pointer to valid file, caller is responsible
-struct circ_buff *read(FILE *file, unsigned long long lines_cnt) {
+/**
+ * @}
+*/
 
-	//initialize buffer of size cnt
+/**
+ * @public
+ * @brief Cte ze souboru radky a uklada je do kruhoveho bufferu. Funkce vytvori kruhovy buffer a alokuje mu pamet.
+ * @details Delka radku je omezena limitem MAX_LINE_LENGTH. Cte se maximalne prvnich MAX_LINE_LENGTH - 1 znaku, zbytek se preskakuje.
+ * @param [in] *file Ukazatel na otevreny a validni (zodpovida uzivatel) soubor, ze ktereho se maji radky cist.
+ * @param [in] lines_cnt Velikost kruhoveho bufferu.
+ * @return Ukazatel na dynamicky alokovany kruhovy buffer naplneny poslednimi "lines_cnt" radky souboru.
+ * @retval NULL Chyba alokace pameti.
+*/
+struct circ_buff *read(FILE *file, unsigned long lines_cnt) {
+
+	//inicializace kruhoveho bufferu
 	struct circ_buff *cb = cb_create(lines_cnt);
 	if (cb == NULL) {
 		fprintf(stderr, "Error: cb_create() has failed!\n");
 		return NULL;
 	}
 
-	
-	//allocates buffer to store line
-	char *buffer = calloc(1, MAX_LINE_LENGTH);
+	//alokace stringu pro ulozeni jednoho radku souboru a zaroven jeho nulovani (calloc)
+ 	char *buffer = calloc(1, MAX_LINE_LENGTH);
 	if (buffer == NULL) {
 		return NULL;
 	}
 
-	while (fgets(buffer, MAX_LINE_LENGTH - 1, file)) {
+	//cteni radku a jejich ukladani do kruhoveho bufferu
+	int warned = 0;
+	while (fgets(buffer, MAX_LINE_LENGTH, file)) {
 
-		if (strlen(buffer) == MAX_LINE_LENGTH && buffer[MAX_LINE_LENGTH] != '\0') {
+		//pokud je radek delsi nez limit, orizne se a na jeho konec se vlozi znak '\n'. '\0' je vkladano automaticky funkci fgets.
+		if (strlen(buffer) == (MAX_LINE_LENGTH - 1)) {
+			buffer[MAX_LINE_LENGTH - 1] = '\n';
 
-			//line is longer than MAX_LINE_LENGTH - add terminating char and ignore rest
-			buffer[MAX_LINE_LENGTH] = '\0';
+			//v pripade prvniho prekroceni mezi se hlasi chyba na stderr
+			if (!warned) {
+				fprintf(stderr, "Warning: Maximum line length has been exceeded!\n");
+				warned = 1;
+			}
 
-			log("log: buffer is too long!\n");
+			//preskoceni zbytku radku
+			char c;
+			while((c = fgetc(file)) != '\n');			
 		}
 
-		//stores read line in cb, if cb is full, overwrites oldest
+		//ulozeni radku do kruhoveho bufferu
 		cb_put(cb, buffer);
 	}
 
@@ -111,29 +166,45 @@ struct circ_buff *read(FILE *file, unsigned long long lines_cnt) {
 	return cb;
 }
 
+/**
+ * @private
+*/
 int main(int argc,char *argv[]) {
-	//check number of args
+	//kontrola poctu argumentu
 	if (argc > 4) {
-		fprintf(stderr, "Wrong arg count: %d\n", (argc - 1));
+		fprintf(stderr, "Error: Invalid arg count: %d\n", (argc - 1));
 		return 1;
 	}
 
+	//definice ukazatele na kruhovy buffer a inicializace delky radku na implicitni hodnotu 10
 	struct circ_buff *cb = NULL;
-	unsigned long long n = 10;
+	long n = 10;
 
 
 	//je-li zadan prepinac -n, tiskne n poslednich radku
 	if (argc > 1 && strncmp(argv[1], "-n", 3) == 0) {
 
+		if(argc == 2) {
+			fprintf(stderr, "Error: Invalid arguments!\n");
+			return 1;
+		}
+
 		//konverze parametru -n na unsigned int a kontrola validity
-		n = strtoul(argv[2], NULL, 10);
+		n = strtol(argv[2], NULL, 10);
 		if (errno == ERANGE) {
-			fprintf(stderr, "Number of lines is too large, strtoul() has failed!\n");
+			fprintf(stderr, "Error: Number of lines is too large, strtol() has failed!\n");
+			return 1;
+		}
+		if (n <= 0) {
+			fprintf(stderr, "Error: Unsigned non-zero value expected!\n");
 			return 1;
 		}
 		if (n == 0) {
 			fprintf(stderr, "Error: Invalid parameter of -n option, expected unsigned integer value!\n");
 			return 1;
+		}
+		if (n > MAX_LINES_CNT) {
+			fprintf(stderr, "Warning: requesting excessive amount of resources can lead to kernel killing the process!\n");
 		}
 		
 		if(argc < 4) {
@@ -145,7 +216,7 @@ int main(int argc,char *argv[]) {
 			}
 		}
 		else {
-			//cte se n radku ze specifikovaneho souboru
+			//je-li specifikovan soubor, cte se z nej n radku
 			FILE *file = fopen(argv[3] ,"r");
 			if(file == NULL) {
 				fprintf(stderr, "Error: Unable to open file \"%s\"\n", argv[3]);
@@ -164,14 +235,14 @@ int main(int argc,char *argv[]) {
 			
 		}
 	}
-	//neni zadan prepinac -n, cte se 10 radku
+	//neni zadan prepinac -n, cte se implicitne 10 radku
 	else {
 		if (argc == 1) {
 			//neni specifikovan soubor, cte se ze stdin
 			cb = read(stdin, n);
 		}
 		else if (argc == 2) {
-			//je specifikovany soubor
+			//je specifikovany soubor, cte se ze souboru
 			FILE *file = fopen(argv[1] ,"r");
 			if(file == NULL) {
 				fprintf(stderr, "Error: Unable to open file \"%s\"\n", argv[1]);
@@ -190,20 +261,19 @@ int main(int argc,char *argv[]) {
 
 		}
 		else {
-			//wrong arg
-			fprintf(stderr, "Too many arguments!\n");
+			fprintf(stderr, "Error: Too many arguments!\n");
 			return 1;
 		}
 	}
 
+	//tisk obsahu kruhoveho bufferu od nejstarsiho po nejnovejsi (FIFO)
 	for (unsigned i = 0; i < n; i++) {
-		printf("%s",cb_get(cb));
+		printf("%s", cb_get(cb));
 		if (cb->end == cb->start) {
 			break;
 		}
 	}
 
 	cb_free(cb);
-
 	return 0;
 }
