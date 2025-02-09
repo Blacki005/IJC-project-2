@@ -1,24 +1,31 @@
-#include "htab.h"
+/**
+ * faulta:      FIT VUT
+ * priklad:     2)
+ * datum:       9. 4. 2023
+ * prekladac:   gcc (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0
+*/
+
 #include "opaque_structures.h"
 
-/**
- * vytvori a a inicializuje tabulku s poctem prvku pole (.arr_size) = n
- * vraci NULL pokud nemuze alokovat pamet, uzivatel za to prebira zodpovednost
-*/
 htab_t *htab_init(const size_t n) {
-    struct htab_t *htab = calloc(1, sizeof(struct htab_t));
-    if (htab == NULL) {
+    //pokud je hodnota nulova, neni co alokovat, v me implementaci se jedna se o chybu a program je ukoncen s chybovou hlaskou
+    if (n == 0) {
         return NULL;
     }
 
-    for (size_t i = 0; i < n; i++) {
-        htab->arr_ptr[i] = calloc(1, sizeof(struct htab_item));
-        if (htab->arr_ptr[i] == NULL) {
-            return NULL;
-        }
+    //alokace pameti pro strukturu htab
+    htab_t *t = calloc(1, sizeof(htab_t));
+    if (t == NULL) {
+        return NULL;
     }
 
-    htab->arr_size = n;
-    htab->size = 0;
-    return htab;
-};
+    //alokace pameti pro pole ukazatelu na linearne vazane seznamy
+    t->arr_ptr = calloc(n, sizeof(struct htab_item *));
+    if (t->arr_ptr == NULL) {
+        return NULL;
+    }
+
+    //inicializace arr_size, size je callocem nastaveny na 0
+    t->arr_size = n;
+    return t;
+}
